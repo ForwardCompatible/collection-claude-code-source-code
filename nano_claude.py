@@ -302,7 +302,7 @@ def cmd_save(args: str, state, _config) -> bool:
 
 def cmd_save_2(args: str, state, _config) -> bool:
     from config import MR_SESSION_DIR
-    fname = args.strip() or f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    fname = "session_lastest.json"
     path = Path(fname) if "/" in fname else MR_SESSION_DIR / fname
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {
@@ -350,11 +350,10 @@ def cmd_resume(args: str, state, _config) -> bool:
     from config import MR_SESSION_DIR
 
     if not args.strip():
-        sessions = list(MR_SESSION_DIR.glob("*.json"))
-        if not sessions:
+        path = MR_SESSION_DIR / "session_lastest.json"
+        if not path.exists():
             info("No auto-saved sessions found.")
-            return False
-        path = sessions[0]
+            return True
     else:
         fname = args.strip()
         path = Path(fname) if "/" in fname else MR_SESSION_DIR / fname
@@ -1043,8 +1042,6 @@ def handle_slash(line: str, state, config) -> Union[bool, tuple]:
         # cmd_voice returns ("__voice__", text) to ask the REPL to run_query
         if isinstance(result, tuple) and result[0] == "__voice__":
             return result
-        if result == False:
-            return False  # not handled, fall through to skill lookup
         return True
 
     # Fall through to skill lookup
@@ -1204,9 +1201,6 @@ def repl(config: dict, initial_prompt: str = None):
             continue
         if result:
             continue
-        else:
-            if user_input == "/resume":
-                info("could not load last session nigga.")
 
         try:
             run_query(user_input)
