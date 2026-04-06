@@ -47,11 +47,37 @@ English | [中文](https://github.com/SafeRL-Lab/nano-claude-code/blob/main/docs
 
 ---
 
+  <div align=center>
+ <img src="https://github.com/SafeRL-Lab/nano-claude-code/blob/main/docs/ssj_demo.gif" width="850"/> 
+ </div>
+<div align=center>
+<center style="color:#000000;text-decoration:underline">SSJ Developer Mode: Power Menu Workflow</center>
+ </div>
+
+---
+
+  <div align=center>
+ <img src="https://github.com/SafeRL-Lab/nano-claude-code/blob/main/docs/telegram_demo.gif" width="850"/> 
+ </div>
+<div align=center>
+<center style="color:#000000;text-decoration:underline">Telegram Bridge: Control nano-claude from Your Phone</center>
+ </div>
+
+---
+
 
 
 ## 🔥🔥🔥 News (Pacific Time)
 
-- Apr 05, 2026 (**v3.05.5**): **Interactive Ollama Model Picker, Windows fixes, /brainstorm command, Rich Live SSH fix**
+
+- Apr 06, 2026 (**v3.05.5**): **SSJ Developer Mode, Telegram Bridge, Worker Command, and UX improvements** (PR [#18](https://github.com/SafeRL-Lab/nano-claude-code/pull/18) by [@KevRojo](https://github.com/KevRojo))
+  - **`/ssj` — SSJ Developer Mode**: Interactive power menu with 10 workflow options: Brainstorm, TODO viewer, Worker, Expert Debate, Propose Improvements, Code Review, README generator, Commit helper, Git Diff Scan, and Idea-to-Tasks Promotion. Menu stays open between actions and supports `/command` passthrough (e.g. `/exit` works from inside SSJ).
+  - **`/worker` command**: Auto-implements pending tasks from `brainstorm_outputs/todo_list.txt` one by one. Supports selecting specific tasks with comma-separated numbers (e.g. `1,4,6`), a custom todo file path (`--path /other/todo.md`), and a worker count limit (`--workers 3`). If you accidentally pass a brainstorm `.md` output file, Worker detects it and offers to redirect to `todo_list.txt` — or to generate it first from the brainstorm file and then run Worker automatically. Each task gets a dedicated prompt that reads code, implements the change, and marks it done.
+  - **`/telegram` — Telegram Bot Bridge**: Receives messages via Telegram Bot API and routes them through the model, sending responses back to the chat. Auto-starts on launch if configured. Only responds to the authorized `chat_id`. Supports slash command passthrough (`/cost`, `/model`, etc.), shows a typing indicator while the model processes, and can be stopped remotely by sending `/stop` in Telegram.
+  - **Brainstorm → TODO pipeline**: After brainstorm synthesis, automatically generates `brainstorm_outputs/todo_list.txt` with prioritized checkbox tasks. TODO viewer (SSJ option 2) shows only pending tasks as numbered (completed tasks shown with ✓ without a number).
+  - **Expert Debate improvements**: SSJ option 4 now prompts for the number of debate agents (default 2, minimum 2); rounds are auto-calculated as `(agents × 2 − 1)`. The debate result is saved to the same directory as the debated file (`<stem>_debate_HHMMSS.md`). An animated per-round per-expert spinner (`⚔️ Round 2/3 — Expert 1 thinking...`) keeps the terminal lively throughout the debate.
+  - **Brainstorm spinner**: Animated spinner with random phrases while brainstorm agents are thinking.
+  - **Force quit**: 3× Ctrl+C within 2 seconds triggers `os._exit(1)` — kills the process immediately regardless of blocking I/O.
   - **Interactive Ollama Model Picker** — when a request fails with 404 (model not found), nano-claude queries the local Ollama API (`/api/tags`) and presents a numbered model selector to switch models and retry without restarting. Cancelling aborts gracefully without crashing the REPL.
   - **Windows file handling** — `_read`, `_write`, and `_edit` in `tools.py` now force UTF-8 encoding and `newline=""`. `_edit` detects pure-CRLF files (every `\n` is part of `\r\n`) and restores line endings after edit; mixed-line-ending files are left as-is to avoid corruption.
   - **/brainstorm command** — `/brainstorm [topic]` runs a multi-persona AI debate. The model first generates N expert personas tailored to the topic (geopolitics → analysts & diplomats; software → architects & engineers; etc.). Agent count is chosen interactively at runtime (2–100, default 5). Results are saved to `brainstorm_outputs/` and synthesized by the main agent. 
@@ -117,6 +143,8 @@ Nano Claude Code: **A Lightweight** and **Easy-to-Use** Python Reimplementation 
   * [Task Management](#task-management)
   * [Voice Input](#voice-input)
   * [Brainstorm](#brainstorm)
+  * [SSJ Developer Mode](#ssj-developer-mode)
+  * [Telegram Bridge](#telegram-bridge)
   * [Proactive Background Monitoring](#proactive-background-monitoring)
   * [Context Compression](#context-compression)
   * [Diff View](#diff-view)
@@ -141,9 +169,9 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 |-----------|--------------------------|---------------------------|
 | Language | TypeScript + React/Ink | Python 3.8+ |
 | Source files | ~1,332 TS/TSX files | 51 Python files |
-| Lines of code | ~283K | ~11.6K |
+| Lines of code | ~283K | ~12K |
 | Built-in tools | 44+ | 25 |
-| Slash commands | 88 | 20 |
+| Slash commands | 88 | 23 |
 | Voice input | Proprietary Anthropic WebSocket (OAuth required) | Local Whisper / OpenAI API — works offline, no subscription |
 | Model providers | Anthropic only | 7+ (Anthropic · OpenAI · Gemini · Kimi · Qwen · DeepSeek · Ollama · …) |
 | Local models | No | Yes — Ollama, LM Studio, vLLM, any OpenAI-compatible endpoint |
@@ -172,6 +200,10 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 - **Diagnostics without LSP server** — `GetDiagnostics` chains pyright → mypy → flake8 → py_compile for Python and tsc/shellcheck for other languages, with zero configuration.
 - **Offline voice input** — `/voice` records via `sounddevice`/`arecord`/SoX, transcribes with local `faster-whisper` (no API key, no subscription), and auto-submits. Keyterms from your git branch and project files boost coding-term accuracy.
 - **Cloud session sync** — `/cloudsave` backs up conversations to private GitHub Gists with zero extra dependencies; restore any past session on any machine with `/cloudsave load <id>`.
+- **SSJ Developer Mode** — `/ssj` opens a persistent power menu with 10 workflow shortcuts: Brainstorm → TODO → Worker pipeline, expert debate, code review, README generation, commit helper, and more. Stays open between actions; supports `/command` passthrough.
+- **Telegram Bot Bridge** — `/telegram <token> <chat_id>` turns nano-claude into a Telegram bot: receive user messages, run the model, and send back responses — all from your phone. Slash commands pass through, and a typing indicator keeps the chat feeling live.
+- **Worker command** — `/worker` auto-implements pending tasks from `brainstorm_outputs/todo_list.txt`, marks each one done after completion, and supports task selection by number (e.g. `1,4,6`).
+- **Force quit** — 3× Ctrl+C within 2 seconds triggers immediate `os._exit(1)`, unblocking any frozen I/O.
 - **Proactive background monitoring** — `/proactive 5m` activates a sentinel daemon that wakes the agent automatically after a period of inactivity, enabling continuous monitoring loops, scheduled checks, or trading bots without user prompts.
 - **Rich Live streaming rendering** — When `rich` is installed, responses stream as live-updating Markdown in place (no duplicate raw text), with clean tool-call interleaving.
 - **Native Ollama reasoning** — Local reasoning models (deepseek-r1, qwen3, gemma4) stream their `<think>` tokens directly to the terminal via `ThinkingChunk` events; enable with `/verbose` and `/thinking`.
@@ -226,9 +258,13 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | Permission system | `auto` / `accept-all` / `manual` modes |
 | 19 slash commands | `/model` · `/config` · `/save` · `/cost` · `/memory` · `/skills` · `/agents` · `/voice` · `/proactive` · … |
 | Voice input | Record → transcribe → auto-submit. Backends: `sounddevice` / `arecord` / SoX + `faster-whisper` / `openai-whisper` / OpenAI API. Works fully offline. |
-| Brainstorm | `/brainstorm [topic]` generates N expert personas suited to the topic (2–100, default 5, chosen interactively), runs an iterative debate, saves results to `brainstorm_outputs/`, and synthesizes a Master Plan. |
+| Brainstorm | `/brainstorm [topic]` generates N expert personas suited to the topic (2–100, default 5, chosen interactively), runs an iterative debate, saves results to `brainstorm_outputs/`, and synthesizes a Master Plan + auto-generates `brainstorm_outputs/todo_list.txt`. |
+| SSJ Developer Mode | `/ssj` opens a persistent interactive power menu with 10 shortcuts: Brainstorm, TODO viewer, Worker, Expert Debate, Propose, Review, Readme, Commit, Scan, Promote. Stays open between actions; `/command` passthrough supported. Debate shows animated per-round spinner and saves result next to the debated file. |
+| Worker | `/worker [task#s]` reads `brainstorm_outputs/todo_list.txt`, implements each pending task with a dedicated model prompt, and marks it done (`- [x]`). Supports task selection (`/worker 1,4,6`), custom path (`--path`), and worker count limit (`--workers`). Detects and redirects accidental brainstorm `.md` paths. |
+| Telegram bridge | `/telegram <token> <chat_id>` starts a bot bridge: receive messages from Telegram, run the model, and reply — all from your phone. Typing indicator, slash command passthrough, and auto-start on launch if configured. |
 | Vision input | `/image [prompt]` captures the clipboard image and sends it to a local vision model (Ollama `llava`, `gemma4`, `llama3.2-vision`). Requires `pip install nano-claude-code[vision]`; Linux also needs `xclip`. |
 | Proactive monitoring | `/proactive [duration]` starts a background sentinel daemon; agent wakes automatically after inactivity, enabling continuous monitoring loops without user prompts |
+| Force quit | 3× Ctrl+C within 2 seconds triggers `os._exit(1)` — kills the process immediately regardless of blocking I/O |
 | Rich Live streaming | When `rich` is installed, responses render as live-updating Markdown in place. Auto-disabled in SSH sessions to prevent repeated output; override with `/config rich_live=false`. |
 | Context injection | Auto-loads `CLAUDE.md`, git status, cwd, persistent memory |
 | Session persistence | Autosave on exit to `daily/YYYY-MM-DD/` (per-day limit) + `history.json` (master, all sessions) + `session_latest.json` (/resume); sessions include `session_id` and `saved_at` metadata; `/load` grouped by date |
@@ -716,6 +752,15 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/cloudsave load <gist_id>` | Download and restore a session from Gist |
 | `/brainstorm` | Run a multi-persona AI brainstorm; prompts for agent count (2–100, default 5) |
 | `/brainstorm <topic>` | Focus the brainstorm on a specific topic; prompts for agent count |
+| `/ssj` | Open SSJ Developer Mode — interactive power menu with 10 workflow shortcuts |
+| `/worker` | Auto-implement all pending tasks from `brainstorm_outputs/todo_list.txt` |
+| `/worker <n,m,…>` | Implement specific pending tasks by number (e.g. `/worker 1,4,6`) |
+| `/worker --path <file>` | Use a custom todo file path instead of the default |
+| `/worker --workers <n>` | Limit the batch to N tasks per run (e.g. `/worker --workers 3`) |
+| `/telegram <token> <chat_id>` | Configure and start the Telegram bot bridge |
+| `/telegram` | Start the bridge using previously saved token + chat_id |
+| `/telegram stop` | Stop the Telegram bridge |
+| `/telegram status` | Show whether the bridge is running and the configured chat_id |
 | `/exit` / `/quit` | Exit |
 
 **Switching models inside a session:**
@@ -1502,6 +1547,207 @@ Generating diverse perspectives...
 
 ---
 
+## SSJ Developer Mode
+
+`/ssj` opens a persistent interactive power menu — a single entry point for the most common development workflows, so you never have to remember command names.
+
+<div align=center>
+<img src="https://github.com/SafeRL-Lab/nano-claude-code/blob/main/docs/ssj_demo.gif" width="850"/>
+</div>
+
+### Menu options
+
+| # | Name | What it does |
+|---|------|--------------|
+| 1 | 💡 Brainstorm | Multi-persona AI debate → Master Plan → auto-generates `brainstorm_outputs/todo_list.txt` |
+| 2 | 📋 Show TODO | View `brainstorm_outputs/todo_list.txt` with ✓/○ indicators and pending task numbers |
+| 3 | 👷 Worker | Auto-implement pending tasks (all, or select by number) |
+| 4 | 🧠 Debate | Pick a file and choose agent count — expert panel debates design round-by-round; result saved next to the file |
+| 5 | ✨ Propose | Pick a file — AI proposes specific improvements with code |
+| 6 | 🔎 Review | Pick a file — structured code review with 1–10 ratings per dimension |
+| 7 | 📘 Readme | Pick a file — auto-generate a professional README for it |
+| 8 | 💬 Commit | Analyse git diff and suggest a conventional commit message |
+| 9 | 🧪 Scan | Summarise all staged/unstaged changes and suggest next steps |
+| 10 | 📝 Promote | Read the latest brainstorm output → convert ideas to `todo_list.txt` tasks |
+| 0 | 🚪 Exit | Return to the main REPL |
+
+### Usage
+
+```
+[myproject] ❯ /ssj
+
+╭─ SSJ Developer Mode ⚡ ─────────────────────────
+│
+│   1.  💡  Brainstorm — Multi-persona AI debate
+│   2.  📋  Show TODO  — View todo_list.txt
+│   3.  👷  Worker     — Auto-implement pending tasks
+│   4.  🧠  Debate     — Expert debate on a file
+│   5.  ✨  Propose    — AI improvement for a file
+│   6.  🔎  Review     — Quick file analysis
+│   7.  📘  Readme     — Auto-generate README.md
+│   8.  💬  Commit     — AI-suggested commit message
+│   9.  🧪  Scan       — Analyze git diff
+│  10.  📝  Promote    — Idea to tasks
+│   0.  🚪  Exit SSJ Mode
+│
+╰──────────────────────────────────────────────
+
+  ⚡ SSJ » 1
+  Topic (Enter for general): nano-claude plugin system
+
+  # → Brainstorm spins up, saves to brainstorm_outputs/, generates todo_list.txt
+  # → Menu re-opens automatically after each action
+
+  ⚡ SSJ » 2
+  # → Shows numbered pending tasks from brainstorm_outputs/todo_list.txt
+
+  ⚡ SSJ » 3
+  Task # (Enter for all, or e.g. 1,4,6): 2
+  # → Worker implements task #2 and marks it done
+```
+
+### Slash command passthrough
+
+Any `/command` typed at the `⚡ SSJ »` prompt is passed through to the REPL:
+
+```
+  ⚡ SSJ » /model gpt-4o
+  # → switches model, then re-opens SSJ menu
+
+  ⚡ SSJ » /exit
+  # → exits nano-claude immediately
+```
+
+### Worker command
+
+`/worker` (also accessible as SSJ option 3) reads `brainstorm_outputs/todo_list.txt` and auto-implements each pending task:
+
+```
+[myproject] ❯ /worker
+  ✓ Worker starting — 3 task(s) to implement
+    1. ○ Add animated brainstorm spinner
+    2. ○ Implement Telegram typing indicator
+    3. ○ Write SSJ demo GIF for README
+
+  ── Worker (1/3): Add animated brainstorm spinner ──
+  [model reads code, implements the change, marks task done]
+
+[myproject] ❯ /worker 2,3
+  # Implement only tasks 2 and 3
+
+[myproject] ❯ /worker --path docs/tasks.md
+  # Use a custom todo file
+
+[myproject] ❯ /worker --workers 2
+  # Process only the first 2 pending tasks this run
+```
+
+**Smart path detection** — if you pass a brainstorm output file (`.md`) by mistake, Worker detects it and offers to redirect to the matching `todo_list.txt` in the same folder. If that file does not yet exist, it offers to generate `todo_list.txt` from the brainstorm output first (SSJ Promote), then run Worker automatically.
+
+### Debate command
+
+SSJ option 4 runs a structured multi-round expert debate on any file:
+
+```
+  ⚡ SSJ » 4
+
+  Files in brainstorm_outputs/:
+    1. brainstorm_20260406_143022.md
+    2. nano_claude.py
+
+  File to debate #: 2
+  Number of debate agents (Enter for 2): 3
+  ℹ Debate result will be saved to: nano_claude_debate_143055.md
+
+⚔️  Assembling expert panel...
+  Expert 1: 🏗️ Architecture Lead — focus: system design & modularity
+  Expert 2: 🔐 Security Engineer — focus: attack surface & input validation
+  Expert 3: ⚡ Performance Specialist — focus: latency & memory usage
+
+⚔️  Round 1/5 — Expert 1 thinking...
+  [Architecture Lead gives opening argument...]
+
+💬  Round 1/5 — Expert 2 formulating...
+  [Security Engineer responds...]
+  ...
+
+📜  Drafting final consensus...
+  [model writes consensus + saves transcript]
+✓ Debate complete. Saved to nano_claude_debate_143055.md
+```
+
+- Agent count is configurable (minimum 2, default 2). Rounds are set to `agents × 2 − 1` for a full open-close structure.
+- An animated spinner shows the current round and expert (`⚔️ Round 2/3 — Expert 1 thinking...`), stopping the moment that expert starts outputting.
+- The full debate transcript and ranked consensus are saved to `<filename>_debate_HHMMSS.md` **in the same directory as the debated file**.
+
+---
+
+## Telegram Bridge
+
+`/telegram` turns nano-claude into a Telegram bot — receive messages from your phone, run the model with full tool access, and reply automatically.
+
+<div align=center>
+<img src="https://github.com/SafeRL-Lab/nano-claude-code/blob/main/docs/telegram_demo.gif" width="850"/>
+</div>
+
+### Setup (one-time)
+
+1. Open [@BotFather](https://t.me/BotFather) in Telegram → `/newbot` → copy the token.
+2. Send any message to your new bot, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` and note your `chat.id`.
+3. Configure nano-claude:
+
+```
+[myproject] ❯ /telegram <your_bot_token> <your_chat_id>
+  ✓ Telegram config saved.
+  ✓ Connected to @your_bot_name. Starting bridge...
+  ✓ Telegram bridge active. Chat ID: 123456789
+  ℹ Send messages to your bot — they'll be processed here.
+  ℹ Stop with /telegram stop or send /stop in Telegram.
+```
+
+Token and chat_id are saved to `~/.nano_claude/config.json`. On next launch the bridge **auto-starts** if configured — the startup banner shows `flags: [telegram]`.
+
+### How it works
+
+```
+Phone (Telegram)                  nano-claude terminal
+──────────────────                ──────────────────────────
+"List Python files"      →        📩 Telegram: List Python files
+                                  [typing indicator sent...]
+                                  ⚙ Glob(**/*.py) → 5 files
+                                  ⚙ response assembled
+                          ←       "agent.py, tools.py, ..."
+```
+
+- **Typing indicator** is sent every 4 seconds while the model processes, so the chat feels responsive.
+- **Unauthorized senders** receive `⛔ Unauthorized.` and their messages are dropped.
+- **Slash command passthrough**: send `/cost`, `/model gpt-4o`, `/clear`, etc. from Telegram and they execute in nano-claude.
+- **`/stop` or `/off`** sent from Telegram stops the bridge gracefully.
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `/telegram <token> <chat_id>` | Configure token + chat_id, then start the bridge |
+| `/telegram` | Start the bridge using saved config |
+| `/telegram status` | Show running state and chat_id |
+| `/telegram stop` | Stop the bridge |
+
+### Auto-start
+
+If both `telegram_token` and `telegram_chat_id` are set in `~/.nano_claude/config.json`, the bridge starts automatically on every nano-claude launch:
+
+```
+╭─ Nano Claude Code ────────────────────────────────╮
+│  Model:       claude-opus-4-6
+│  Permissions: auto   flags: [telegram]
+│  Type /help for commands, Ctrl+C to cancel        │
+╰───────────────────────────────────────────────────╯
+✓ Telegram bridge started (auto). Bot: @your_bot_name
+```
+
+---
+
 ## Proactive Background Monitoring
 
 Nano Claude Code v3.05.2 adds a **sentinel daemon** that automatically wakes the agent after a configurable period of inactivity — no user prompt required. This enables use cases like continuous log monitoring, market script polling, or scheduled code checks.
@@ -1801,7 +2047,7 @@ From that point on, every `/exit` or `/quit` automatically uploads the session b
 
 ```
 nano_claude_code/
-├── nano_claude.py        # Entry point: REPL + slash commands + diff rendering + Rich Live streaming + proactive sentinel daemon
+├── nano_claude.py        # Entry point: REPL + slash commands + diff rendering + Rich Live streaming + proactive sentinel daemon + SSJ mode + Telegram bridge + Worker command
 ├── agent.py              # Agent loop: streaming, tool dispatch, compaction
 ├── providers.py          # Multi-provider: Anthropic, OpenAI-compat streaming
 ├── tools.py              # Core tools (Read/Write/Edit/Bash/Glob/Grep/Web/NotebookEdit/GetDiagnostics) + registry wiring

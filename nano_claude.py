@@ -207,6 +207,17 @@ _TOOL_SPINNER_PHRASES = [
     "🐛 Chasing a bug...",
 ]
 
+_DEBATE_SPINNER_PHRASES = [
+    "⚔️  Experts taking their positions...",
+    "🧠  Experts formulating arguments...",
+    "🗣️  Debate in progress...",
+    "⚖️  Weighing the evidence...",
+    "💡  Building counter-arguments...",
+    "🔥  Debate heating up...",
+    "📜  Drafting the consensus...",
+    "🎯  Finding common ground...",
+]
+
 _tool_spinner_thread = None
 _tool_spinner_stop = threading.Event()
 
@@ -1692,42 +1703,98 @@ def cmd_ssj(args: str, state, config) -> bool:
             return ("__ssj_cmd__", "brainstorm", topic)
 
         elif choice == "2":
-            todo_path = Path("todo_list.txt")
+            todo_path = Path("brainstorm_outputs") / "todo_list.txt"
             if todo_path.exists():
                 content = todo_path.read_text(encoding="utf-8", errors="replace")
                 lines = content.splitlines()
                 task_lines = [(i, l) for i, l in enumerate(lines) if l.strip().startswith("- [")]
-                pending = sum(1 for _, l in task_lines if l.strip().startswith("- [ ]"))
-                done = sum(1 for _, l in task_lines if l.strip().startswith("- [x]"))
+                pending_lines = [(i, l) for i, l in task_lines if l.strip().startswith("- [ ]")]
+                done_lines = [(i, l) for i, l in task_lines if l.strip().startswith("- [x]")]
+                pending = len(pending_lines)
+                done = len(done_lines)
                 print(clr(f"\n  📋 TODO List ({done} done / {pending} pending):", "cyan"))
                 print(clr("  " + "─" * 46, "dim"))
-                for num, (_, ln) in enumerate(task_lines, 1):
-                    ln_s = ln.strip()
-                    if ln_s.startswith("- [x]"):
-                        label = ln_s[5:].strip()
-                        print(clr(f"  {num:3d}. ✓ {label}", "green"))
-                    elif ln_s.startswith("- [ ]"):
-                        label = ln_s[5:].strip()
-                        print(f"  {num:3d}. ○ {label}")
+                for _, ln in done_lines:
+                    label = ln.strip()[5:].strip()
+                    print(clr(f"       ✓ {label}", "green"))
+                for num, (_, ln) in enumerate(pending_lines, 1):
+                    label = ln.strip()[5:].strip()
+                    print(f"  {num:3d}. ○ {label}")
                 print(clr("  " + "─" * 46, "dim"))
-                print(clr("  Tip: use Worker (3) with task #s e.g. 1,4,6 to run specific tasks", "dim"))
+                print(clr("  Tip: use Worker (3) with pending task #s e.g. 1,4,6", "dim"))
             else:
                 err("No todo_list.txt found. Run Brainstorm (1) first.")
+            print(_SSJ_MENU)
+            continue
 
         elif choice == "3":
+            # Preview current default todo file status
+            _default_todo = Path("brainstorm_outputs") / "todo_list.txt"
+            if _default_todo.exists():
+                _lines = _default_todo.read_text(encoding="utf-8", errors="replace").splitlines()
+                _pend  = sum(1 for l in _lines if l.strip().startswith("- [ ]"))
+                _done  = sum(1 for l in _lines if l.strip().startswith("- [x]"))
+                print(clr(f"\n  📋 Default todo: brainstorm_outputs/todo_list.txt  "
+                          f"({_done} done / {_pend} pending)", "cyan"))
+            else:
+                print(clr("\n  ℹ  No brainstorm_outputs/todo_list.txt yet. "
+                          "You can specify a path or generate one from a brainstorm file.", "dim"))
+            print(clr("  ──────────────────────────────────────────────────────", "dim"))
+            print(clr("  Note: todo file must contain tasks in '- [ ] task' format.", "dim"))
+            todo_input = input(clr("  Path to todo file (Enter for default): ", "cyan")).strip()
+
+            # Track original md path in case we need Promote→Worker chain
+            _original_md = None
+            if todo_input.endswith(".md") and "brainstorm_" in todo_input:
+                warn("That looks like a brainstorm output file, not a todo list.")
+                _suggested = str(Path(todo_input).parent / "todo_list.txt")
+                print(clr(f"  Suggested todo path: {_suggested}", "yellow"))
+                _fix = input(clr("  Use that path instead? [Y/n]: ", "cyan")).strip().lower()
+                if _fix in ("", "y"):
+                    _original_md = todo_input
+                    todo_input = _suggested
+
             task_num = input(clr("  Task # (Enter for all, or e.g. 1,4,6): ", "cyan")).strip()
-            return ("__ssj_cmd__", "worker", task_num)
+            workers  = input(clr("  Max tasks this session (Enter for all): ", "cyan")).strip()
+
+            # Resolve the final path to check existence
+            _resolved = Path(todo_input) if todo_input else _default_todo
+            if not _resolved.exists():
+                if _original_md and Path(_original_md).exists():
+                    # Offer to auto-generate todo_list.txt from the brainstorm .md, then run worker
+                    print(clr(f"\n  ℹ  {_resolved} not found.", "yellow"))
+                    _gen = input(clr(f"  Generate todo_list.txt from {Path(_original_md).name} first, then run Worker? [Y/n]: ",
+                                     "cyan")).strip().lower()
+                    if _gen in ("", "y"):
+                        return ("__ssj_promote_worker__",
+                                _original_md, str(_resolved), task_num, workers)
+                # No auto-generate possible — let cmd_worker show the error
+            arg_parts = []
+            if todo_input:
+                arg_parts.append(f"--path {todo_input}")
+            if task_num:
+                arg_parts.append(f"--tasks {task_num}")
+            if workers and workers.isdigit() and int(workers) >= 1:
+                arg_parts.append(f"--workers {workers}")
+            return ("__ssj_cmd__", "worker", " ".join(arg_parts))
 
         elif choice == "4":
             filepath = _pick_file("  File to debate #: ")
             if not filepath:
                 continue
-            return ("__ssj_query__", (
-                f"Act as two expert developers with opposing views debating improvements for the file: {filepath}. "
-                f"Read the file first. Expert A focuses on architecture and clean code. "
-                f"Expert B focuses on performance and pragmatism. "
-                f"Have them debate 3 rounds, then produce a final consensus with actionable changes."
-            ))
+            _nagents_raw = input(clr("  Number of debate agents (Enter for 2): ", "cyan")).strip()
+            try:
+                _nagents = max(2, int(_nagents_raw)) if _nagents_raw else 2
+            except ValueError:
+                err("Invalid number, using 2.")
+                _nagents = 2
+            _rounds = max(1, (_nagents * 2 - 1))
+            # Derive output path: same dir as debated file, stem + _debate_HHMMSS.md
+            _fp = Path(filepath)
+            _debate_out = str(_fp.parent / f"{_fp.stem}_debate_{time.strftime('%H%M%S')}.md")
+            info(f"Debate result will be saved to: {_debate_out}")
+            # Return structured sentinel so the handler can drive each round separately
+            return ("__ssj_debate__", filepath, _nagents, _rounds, _debate_out)
 
         elif choice == "5":
             filepath = _pick_file("  File to improve #: ")
@@ -1783,7 +1850,7 @@ def cmd_ssj(args: str, state, config) -> bool:
             return ("__ssj_query__", (
                 f"Read the brainstorm file {latest} and extract all actionable ideas. "
                 f"Convert each idea into a task with checkbox format (- [ ] task description). "
-                f"Write them to todo_list.txt using the Write tool. Prioritize by impact."
+                f"Write them to brainstorm_outputs/todo_list.txt using the Write tool. Prioritize by impact."
             ))
 
         else:
@@ -1795,34 +1862,94 @@ def cmd_ssj(args: str, state, config) -> bool:
 # ── Worker command ─────────────────────────────────────────────────────────
 
 def cmd_worker(args: str, state, config) -> bool:
-    """Auto-implement pending tasks from todo_list.txt one by one.
+    """Auto-implement pending tasks from a todo_list.txt file.
 
-    Usage: /worker          — work through all pending tasks
-           /worker <n>      — implement task number n only
-
-    The worker reads todo_list.txt, picks pending tasks (- [ ]),
-    implements them, and marks them as done (- [x]) in the file.
+    Usage:
+      /worker                              — all pending tasks, default path
+      /worker 1,4,6                        — specific task numbers, default path
+      /worker --path /some/todo.txt        — all tasks from custom path
+      /worker --path /some/todo.txt 1,4,6  — specific tasks from custom path
+      --tasks 1,4,6                        — explicit task selection flag
+      --workers N                          — run at most N tasks this session
     """
+    import shlex
     from pathlib import Path
 
-    todo_path = Path("todo_list.txt")
+    # ── Arg parsing ───────────────────────────────────────────────────────
+    raw = args.strip()
+    todo_path_override = None
+    task_nums_str      = None
+    max_workers        = None
+
+    tokens = raw.split() if raw else []
+    remaining = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "--path" and i + 1 < len(tokens):
+            todo_path_override = tokens[i + 1]
+            i += 2
+        elif tok.startswith("--path="):
+            todo_path_override = tok[len("--path="):]
+            i += 1
+        elif tok == "--tasks" and i + 1 < len(tokens):
+            task_nums_str = tokens[i + 1]
+            i += 2
+        elif tok.startswith("--tasks="):
+            task_nums_str = tok[len("--tasks="):]
+            i += 1
+        elif tok == "--workers" and i + 1 < len(tokens):
+            max_workers = tokens[i + 1]
+            i += 2
+        elif tok.startswith("--workers="):
+            max_workers = tok[len("--workers="):]
+            i += 1
+        else:
+            remaining.append(tok)
+            i += 1
+
+    # Remaining token: if it looks like a path use it, else treat as task nums
+    if remaining:
+        leftover = " ".join(remaining)
+        if todo_path_override is None and (
+            "/" in leftover or "\\" in leftover
+            or leftover.endswith(".txt") or leftover.endswith(".md")
+        ):
+            todo_path_override = leftover
+        elif task_nums_str is None:
+            task_nums_str = leftover
+
+    # Resolve todo path
+    todo_path = Path(todo_path_override) if todo_path_override else Path("brainstorm_outputs") / "todo_list.txt"
+
     if not todo_path.exists():
-        err("No todo_list.txt found. Run /brainstorm first to generate one.")
+        err(f"No todo file found at {todo_path}.")
+        if not todo_path_override:
+            info("Run /brainstorm first, or specify a path with --path /your/todo.txt")
         return True
 
+    # ── Load pending tasks ────────────────────────────────────────────────
     content = todo_path.read_text(encoding="utf-8", errors="replace")
-    lines = content.splitlines()
+    lines   = content.splitlines()
     pending = [(i, ln) for i, ln in enumerate(lines) if ln.strip().startswith("- [ ]")]
 
     if not pending:
-        ok("All tasks completed! No pending items in todo_list.txt.")
+        # Check if file has *any* task lines at all to give a clearer message
+        any_tasks = any(ln.strip().startswith("- [") for ln in lines)
+        if any_tasks:
+            ok(f"All tasks completed! No pending items in {todo_path}.")
+        else:
+            err(f"No task lines found in {todo_path}.")
+            info("Worker expects lines like:  - [ ] task description")
+            if str(todo_path).endswith(".md") and "brainstorm_" in str(todo_path):
+                _suggested = str(Path(todo_path).parent / "todo_list.txt")
+                info(f"If you meant the todo list, try: /worker --path {_suggested}")
         return True
 
-    # If specific task numbers are given (e.g. "3" or "1,4,6")
-    target = args.strip()
-    if target:
+    # ── Filter by task numbers ────────────────────────────────────────────
+    if task_nums_str:
         try:
-            nums = [int(x.strip()) for x in target.split(",") if x.strip()]
+            nums = [int(x.strip()) for x in task_nums_str.split(",") if x.strip()]
             selected = []
             for n in nums:
                 if 1 <= n <= len(pending):
@@ -1832,14 +1959,27 @@ def cmd_worker(args: str, state, config) -> bool:
                     return True
             pending = selected
         except ValueError:
-            err(f"Invalid task number(s). Use 1-{len(pending)} or e.g. 1,4,6")
+            err(f"Invalid task number(s): '{task_nums_str}'. Use e.g. 1,4,6")
             return True
 
-    ok(f"Worker starting — {len(pending)} task(s) to implement")
+    # ── Apply worker batch limit ──────────────────────────────────────────
+    worker_count = 1
+    if max_workers is not None:
+        try:
+            worker_count = max(1, int(max_workers))
+        except ValueError:
+            err(f"Invalid --workers value: '{max_workers}'. Must be a positive integer.")
+            return True
+    if worker_count < len(pending):
+        info(f"Workers: {worker_count} — running first {worker_count} of {len(pending)} pending task(s) this session.")
+        pending = pending[:worker_count]
+
+    ok(f"Worker starting — {len(pending)} task(s) | file: {todo_path}")
     info("Pending tasks:")
     for n, (_, ln) in enumerate(pending, 1):
         print(f"  {n}. {ln.strip()}")
 
+    # ── Build prompts ─────────────────────────────────────────────────────
     worker_prompts = []
     for line_idx, task_line in pending:
         task_text = task_line.strip().replace("- [ ] ", "", 1)
@@ -1849,7 +1989,7 @@ def cmd_worker(args: str, state, config) -> bool:
             f"Instructions:\n"
             f"1. Read the relevant files, understand the codebase.\n"
             f"2. Implement the task — write code, edit files, run tests.\n"
-            f"3. When DONE, use the Edit tool to mark this exact line in todo_list.txt:\n"
+            f"3. When DONE, use the Edit tool to mark this exact line in {todo_path}:\n"
             f'   Change "- [ ] {task_text}" to "- [x] {task_text}"\n'
             f"4. If you CANNOT complete it, leave it as - [ ] and explain why.\n"
             f"5. Be concise. Act, don't explain."
@@ -2050,7 +2190,7 @@ def cmd_telegram(args: str, _state, config) -> bool:
     if parts and parts[0].lower() == "status":
         running = _telegram_thread and _telegram_thread.is_alive()
         token = config.get("telegram_token", "")
-        chat_id = config.get("telegram_chat_id", "")
+        chat_id = config.get("telegram_chat_id", 0)
         if running:
             ok(f"Telegram bridge is running. Chat ID: {chat_id}")
         elif token:
@@ -2349,7 +2489,7 @@ def handle_slash(line: str, state, config) -> Union[bool, tuple]:
     if handler:
         result = handler(args, state, config)
         # cmd_voice/cmd_image/cmd_brainstorm return sentinels to ask the REPL to run_query
-        if isinstance(result, tuple) and result[0] in ("__voice__", "__image__", "__brainstorm__", "__worker__", "__ssj_cmd__", "__ssj_query__", "__ssj_passthrough__"):
+        if isinstance(result, tuple) and result[0] in ("__voice__", "__image__", "__brainstorm__", "__worker__", "__ssj_cmd__", "__ssj_query__", "__ssj_debate__", "__ssj_passthrough__", "__ssj_promote_worker__"):
             return result
         return True
 
@@ -2688,8 +2828,9 @@ def repl(config: dict, initial_prompt: str = None):
             _, brain_prompt, brain_out_file = result
             run_query(brain_prompt)
             _save_synthesis(state, brain_out_file)
+            _todo_path = str(Path(brain_out_file).parent / "todo_list.txt")
             run_query(
-                "Based on the Master Plan you just synthesized, generate a todo_list.txt file in the current directory. "
+                f"Based on the Master Plan you just synthesized, generate a todo list file at {_todo_path}. "
                 "Format: one task per line, each starting with '- [ ] '. "
                 "Order by priority. Include ALL actionable items from the plan. "
                 "Use the Write tool to create the file. Do NOT explain, just write the file now."
@@ -2896,6 +3037,10 @@ def repl(config: dict, initial_prompt: str = None):
             # SSJ passthrough: user typed a /command inside SSJ menu
             if result[0] == "__ssj_passthrough__":
                 _, slash_line = result
+                # Guard against /ssj re-entering itself infinitely
+                if slash_line.strip().lower() == "/ssj":
+                    result = handle_slash("/ssj", state, config)
+                    continue
                 inner = handle_slash(slash_line, state, config)
                 if isinstance(inner, tuple):
                     result = inner
@@ -2929,14 +3074,15 @@ def repl(config: dict, initial_prompt: str = None):
                 try:
                     run_query(brain_prompt)
                     _save_synthesis(state, brain_out_file)
+                    _todo_path = str(Path(brain_out_file).parent / "todo_list.txt")
                     print(clr("\n  ── Generating TODO List from Master Plan ──", "dim"))
                     run_query(
-                        "Based on the Master Plan you just synthesized, generate a todo_list.txt file in the current directory. "
+                        f"Based on the Master Plan you just synthesized, generate a todo list file at {_todo_path}. "
                         "Format: one task per line, each starting with '- [ ] '. "
                         "Order by priority. Include ALL actionable items from the plan. "
                         "Use the Write tool to create the file. Do NOT explain, just write the file now."
                     )
-                    info("TODO list saved to todo_list.txt. Edit it freely, then use /worker to start implementing.")
+                    info(f"TODO list saved to {_todo_path}. Edit it freely, then use /worker to start implementing.")
                 except KeyboardInterrupt:
                     _track_ctrl_c()
                     print(clr("\n  (interrupted)", "yellow"))
@@ -2944,6 +3090,36 @@ def repl(config: dict, initial_prompt: str = None):
                     result = handle_slash("/ssj", state, config)
                     continue
                 break
+            # Promote-then-Worker: generate todo_list.txt from brainstorm .md, then run worker
+            if result[0] == "__ssj_promote_worker__":
+                _, md_path, todo_path_str, task_nums_str, max_workers_str = result
+                promote_prompt = (
+                    f"Read the brainstorm file {md_path} and extract all actionable ideas. "
+                    f"Convert each idea into a task with checkbox format (- [ ] task description). "
+                    f"Write them to {todo_path_str} using the Write tool. Prioritize by impact. "
+                    f"Do NOT explain, just write the file now."
+                )
+                print(clr(f"\n  ── Generating TODO list from {Path(md_path).name} ──", "dim"))
+                try:
+                    run_query(promote_prompt)
+                except KeyboardInterrupt:
+                    _track_ctrl_c()
+                    print(clr("\n  (interrupted)", "yellow"))
+                    result = handle_slash("/ssj", state, config)
+                    continue
+                # Now run worker on the newly created file
+                worker_args = f"--path {todo_path_str}"
+                if task_nums_str:
+                    worker_args += f" --tasks {task_nums_str}"
+                if max_workers_str and max_workers_str.isdigit():
+                    worker_args += f" --workers {max_workers_str}"
+                inner = handle_slash(f"/worker {worker_args}".strip(), state, config)
+                if isinstance(inner, tuple):
+                    result = ("__ssj_wrap__", inner)
+                    continue
+                result = handle_slash("/ssj", state, config)
+                continue
+
             # Worker sentinel: ("__worker__", [(line_idx, task_text, prompt), ...])
             if result[0] == "__worker__":
                 _, worker_tasks = result
@@ -2960,6 +3136,84 @@ def repl(config: dict, initial_prompt: str = None):
                     result = handle_slash("/ssj", state, config)
                     continue
                 break
+            # Debate sentinel: ("__ssj_debate__", filepath, nagents, rounds, out_file)
+            # Drives the debate round-by-round, showing a spinner before each expert's turn.
+            if result[0] == "__ssj_debate__":
+                _, _dfile, _nagents, _rounds, _debate_out = result
+                import random as _random
+
+                # ── Stdout wrapper: stops spinner on first real (non-\r) output ──
+                class _DebateSpinnerWrapper:
+                    def __init__(self, real_out):
+                        self._real = real_out
+                        self._stopped = False
+                    def write(self, s):
+                        if not self._stopped and s and not s.startswith('\r'):
+                            self._stopped = True
+                            _stop_tool_spinner()
+                            self._real.write('\n')
+                        return self._real.write(s)
+                    def flush(self):   return self._real.flush()
+                    def __getattr__(self, name): return getattr(self._real, name)
+
+                def _spin_and_query(phrase, prompt):
+                    """Show spinner with phrase, stop it on first model output, run query."""
+                    with _spinner_lock:
+                        global _spinner_phrase
+                        _spinner_phrase = phrase
+                    _start_tool_spinner()
+                    _orig = sys.stdout
+                    sys.stdout = _DebateSpinnerWrapper(sys.stdout)
+                    try:
+                        run_query(prompt)
+                    finally:
+                        _stop_tool_spinner()
+                        sys.stdout = _orig
+
+                try:
+                    # ── Step 1: Read file and assign expert personas ──────────
+                    _spin_and_query(
+                        "⚔️  Assembling expert panel...",
+                        f"Read the file {_dfile}. Then introduce the {_nagents} expert debaters you will "
+                        f"role-play, each with a distinct focus area chosen to best challenge each other "
+                        f"(e.g. architecture, performance, security, UX, testing, maintainability). "
+                        f"List their names and focus areas. Do NOT debate yet."
+                    )
+
+                    # ── Step 2: Each round, each expert takes a turn ──────────
+                    for _r in range(1, _rounds + 1):
+                        for _e in range(1, _nagents + 1):
+                            _phase = "opening argument" if _r == 1 else f"round {_r} response"
+                            _spin_and_query(
+                                _random.choice([
+                                    f"⚔️  Round {_r}/{_rounds} — Expert {_e} thinking...",
+                                    f"💬  Round {_r}/{_rounds} — Expert {_e} formulating...",
+                                    f"🧠  Round {_r}/{_rounds} — Expert {_e} responding...",
+                                ]),
+                                f"Now speak as Expert {_e}. Give your {_phase}. "
+                                f"Be specific, reference the file content, and directly address "
+                                f"the previous arguments. Be concise (3-5 key points)."
+                            )
+
+                    # ── Step 3: Consensus + save ──────────────────────────────
+                    _spin_and_query(
+                        "📜  Drafting final consensus...",
+                        f"Based on this entire debate, write a final consensus that all experts agree on. "
+                        f"List the top actionable changes ranked by impact. "
+                        f"Then use the Write tool to save the complete debate transcript and this consensus "
+                        f"to: {_debate_out}"
+                    )
+                    ok(f"Debate complete. Saved to {_debate_out}")
+
+                except KeyboardInterrupt:
+                    _track_ctrl_c()
+                    _stop_tool_spinner()
+                    sys.stdout = sys.__stdout__
+                    print(clr("\n  (debate interrupted)", "yellow"))
+
+                result = handle_slash("/ssj", state, config)
+                continue
+
             # SSJ query sentinel: ("__ssj_query__", prompt)
             if result[0] == "__ssj_query__":
                 _, ssj_prompt = result
